@@ -20,13 +20,25 @@ int timer_interval = 10;   // time period in ms
 struct timer_list timer;
 
 
+void get_instruction_count(void* ptr)
+{
+  *((unsigned long*) ptr) += read_msr(FFC0);
+  reset_counter(FFC0);
+}
+
 void timer_handler(unsigned long data)
 {
-  unsigned long instr_count = 0, cycle_count = 0, branch_misses = 0, l1_misses = 0;
+  unsigned long instr_count = 0, cycle_count = 0,
+                branch_misses = 0, l1_misses = 0;
+
+/*
+  unsigned i;
+  for (i =0; i < num_online_cpus(); i++)
+    smp_call_function_single(i, get_instruction_count, (void*) &instr_count,0);
+*/
 
   instr_count = read_msr(FFC0);
   cycle_count = read_msr(FFC2);
-
   l1_misses = read_msr(PMC0);
   branch_misses = read_msr(PMC1);
 
