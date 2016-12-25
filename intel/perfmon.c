@@ -11,6 +11,8 @@
 
 #include "msr_functions.h"
 
+#include <linux/pmctrack.h>
+
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Ishan");
 MODULE_DESCRIPTION("Module to monitor performance");
@@ -22,51 +24,70 @@ struct timer_list timer;
 
 void get_instruction_count(void* ptr)
 {
-  *((unsigned long*) ptr) += read_msr(FFC0);
+  unsigned long inst=0, cycles;
+  inst = read_msr(FFC0);
+  cycles = read_msr(FFC1);
+  *((unsigned long*) ptr) = inst;
   reset_counter(FFC0);
+  reset_counter(FFC1);
 }
+
+
+void get_l1_misses(void* ptr)
+{
+  unsigned long misses=0;
+  misses = read_msr(PMC0);
+  *((unsigned long*) ptr) = misses;
+  reset_counter(PMC0);
+}
+
+
 
 void timer_handler(unsigned long data)
 {
-  unsigned long instr_count = 0, cycle_count = 0,
-                branch_misses = 0, l1_misses = 0;
+  unsigned long ipc[num_online_cpus()];
+  unsigned long llc_misses = 0, l1_misses[num_online_cpus()];
+  unsigned long cycles1=0 ,cycles2 = 0;
 
-/*
   unsigned i;
-  for (i =0; i < num_online_cpus(); i++)
-    smp_call_function_single(i, get_instruction_count, (void*) &instr_count,0);
-*/
-
-  instr_count = read_msr(FFC0);
-  cycle_count = read_msr(FFC2);
-  l1_misses = read_msr(PMC0);
-  branch_misses = read_msr(PMC1);
-
-  reset_counter(FFC0);
+//  cycles1 = read_msr(FFC1);
   reset_counter(FFC2);
-  reset_counter(PMC0);
+  for (i =0; i < num_online_cpus(); i++)
+  {
+    smp_call_function_single(i, get_instruction_count, (void*) (&ipc[i]),1);
+    smp_call_function_single(i, get_l1_misses, (void*) (&l1_misses[i]),1);
+  }
+  cycles2 = read_msr(FFC2);
+//  reset_counter(FFC1);
+  llc_misses = read_msr(PMC1);
   reset_counter(PMC1);
 
   /*Restarting the timer...*/
   mod_timer( &timer, jiffies + msecs_to_jiffies(timer_interval));
 
-  printk(KERN_INFO "instructions: %lu, cycles: %lu, l1D misses: %lu, branch misses: %lu\n",
-                              instr_count, cycle_count, l1_misses, branch_misses);
+  printk(KERN_INFO "ipc %lu, llc references: %lu, overhead: %lu\n",
+                              ipc[0], l1_misses[0], cycles2);
 }
 
 
 static int __init perfmon_init(void)
 {
+  uint64_t test;
+  struct task_struct* my_struct;
+  my_struct = pid_task(find_vpid(1), PIDTYPE_PID);
+  pmcs_get_current_metric_value(my_struct, 1, &test);
   printk(KERN_INFO "Performance monitor loaded.\n");
 
-  init_counters();
+//  init_counters();
 
-  set_pmc(PMC0,EVENT_L1D_miss);
-  set_pmc(PMC1,EVENT_branch_misses);
+//  set_pmc(PMC0,EVENT_LLC_references);
+//  set_pmc(PMC1,EVENT_LLC_misses);
+
+
 
   /*Initialize the timer*/
-  setup_timer(&timer, timer_handler, 0);
-  mod_timer( &timer, jiffies + msecs_to_jiffies(timer_interval));
+//  setup_timer(&timer, timer_handler, 0);
+//  mod_timer( &timer, jiffies + msecs_to_jiffies(timer_interval));
 
   return 0;
 }
