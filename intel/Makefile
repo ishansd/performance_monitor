@@ -13,6 +13,6 @@ clean:
 else
 
 $(info Building with KERNELRELEASE = ${KERNELRELEASE})
-obj-m :=    perfmon.o
+obj-m :=    register_mod.o
 
 endif
